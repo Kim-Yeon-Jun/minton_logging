@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { loginApi } from '../services/authApi';
-import { User } from '../types/auth.types';
+import { LoginResponse } from '../types/auth.types';
 
-export function useLogin(onSuccess: (user: User) => void) {
+export function useLogin(onSuccess: (result: LoginResponse) => void) {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');

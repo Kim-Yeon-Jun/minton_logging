@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from models.group import Group, GroupMember
+from models.game import Game, GameParticipant
+from permissions import assert_group_member
+from security import get_current_user
 
 router = APIRouter()
 
@@ -13,7 +16,6 @@ router = APIRouter()
 class GroupCreateRequest(BaseModel):
     group_name: str
     description: str | None = None
-    owner_id: str
 
 class GroupResponse(BaseModel):
     group_key: str
@@ -39,30 +41,45 @@ class GroupDetailResponse(BaseModel):
     members: list[GroupMemberResponse] = []
 
 class GroupJoinRequest(BaseModel):
-    user_id: str
     role: str = "member"
 
-class GroupLeaveRequest(BaseModel):
-    user_id: str
+class MyRecordResponse(BaseModel):
+    wins: int
+    losses: int
+    draws: int
+    win_rate: float
+
+class HeadToHeadResponse(BaseModel):
+    opponent_id: str
+    opponent_name: str
+    wins: int
+    losses: int
+
+class MonthlyTrendResponse(BaseModel):
+    month: str
+    games: int
+    wins: int
+
+class GroupStatsResponse(BaseModel):
+    my_record: MyRecordResponse
+    head_to_head: list[HeadToHeadResponse]
+    monthly_trend: list[MonthlyTrendResponse]
 
 
 # --- API Endpoints ---
 
 @router.post("/groups", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
-def create_group(request: GroupCreateRequest, db: Session = Depends(get_db)):
+def create_group(
+    request: GroupCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """새로운 그룹(동호회/모임)을 생성합니다."""
-    owner = db.query(User).filter(User.id == request.owner_id).first()
-    if not owner:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="존재하지 않는 사용자입니다."
-        )
-
     new_group = Group(
         group_key=str(uuid.uuid4()),
         group_name=request.group_name,
         description=request.description,
-        owner_id=request.owner_id
+        owner_id=current_user.id
     )
     db.add(new_group)
     db.flush()
@@ -70,14 +87,14 @@ def create_group(request: GroupCreateRequest, db: Session = Depends(get_db)):
     # 생성자를 그룹 관리자(admin) 멤버로 등록
     owner_member = GroupMember(
         group_key=new_group.group_key,
-        user_id=request.owner_id,
+        user_id=current_user.id,
         role="admin"
     )
     db.add(owner_member)
 
     # 사용자의 대표 그룹 키가 지정되지 않았다면 현재 그룹으로 설정
-    if not owner.group_key:
-        owner.group_key = new_group.group_key
+    if not current_user.group_key:
+        current_user.group_key = new_group.group_key
 
     db.commit()
     db.refresh(new_group)
@@ -93,7 +110,7 @@ def create_group(request: GroupCreateRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/groups", response_model=list[GroupResponse])
-def get_groups(db: Session = Depends(get_db)):
+def get_groups(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """활성화된 전체 그룹 목록을 조회합니다."""
     groups = db.query(Group).filter(Group.is_active == True).all()
     result = []
@@ -111,7 +128,11 @@ def get_groups(db: Session = Depends(get_db)):
 
 
 @router.get("/groups/user/{user_id}", response_model=list[GroupResponse])
-def get_user_groups(user_id: str, db: Session = Depends(get_db)):
+def get_user_groups(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """특정 사용자가 가입한 그룹 목록을 조회합니다."""
     memberships = db.query(GroupMember).filter(GroupMember.user_id == user_id).all()
     group_keys = [m.group_key for m in memberships]
@@ -132,7 +153,11 @@ def get_user_groups(user_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/groups/{group_key}", response_model=GroupDetailResponse)
-def get_group_detail(group_key: str, db: Session = Depends(get_db)):
+def get_group_detail(
+    group_key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """특정 그룹의 상세 정보 및 멤버 목록을 조회합니다."""
     group = db.query(Group).filter(Group.group_key == group_key, Group.is_active == True).first()
     if not group:
@@ -165,7 +190,12 @@ def get_group_detail(group_key: str, db: Session = Depends(get_db)):
 
 
 @router.post("/groups/{group_key}/join")
-def join_group(group_key: str, request: GroupJoinRequest, db: Session = Depends(get_db)):
+def join_group(
+    group_key: str,
+    request: GroupJoinRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """사용자를 그룹에 가입시킵니다."""
     group = db.query(Group).filter(Group.group_key == group_key, Group.is_active == True).first()
     if not group:
@@ -174,16 +204,9 @@ def join_group(group_key: str, request: GroupJoinRequest, db: Session = Depends(
             detail="존재하지 않는 그룹입니다."
         )
 
-    user = db.query(User).filter(User.id == request.user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="존재하지 않는 사용자입니다."
-        )
-
     existing_member = db.query(GroupMember).filter(
         GroupMember.group_key == group_key,
-        GroupMember.user_id == request.user_id
+        GroupMember.user_id == current_user.id
     ).first()
 
     if existing_member:
@@ -194,14 +217,14 @@ def join_group(group_key: str, request: GroupJoinRequest, db: Session = Depends(
 
     new_member = GroupMember(
         group_key=group_key,
-        user_id=request.user_id,
+        user_id=current_user.id,
         role=request.role
     )
     db.add(new_member)
 
     # 사용자의 대표 그룹 키가 없는 경우 가입한 그룹으로 변경
-    if not user.group_key:
-        user.group_key = group_key
+    if not current_user.group_key:
+        current_user.group_key = group_key
 
     db.commit()
 
@@ -209,11 +232,15 @@ def join_group(group_key: str, request: GroupJoinRequest, db: Session = Depends(
 
 
 @router.post("/groups/{group_key}/leave")
-def leave_group(group_key: str, request: GroupLeaveRequest, db: Session = Depends(get_db)):
+def leave_group(
+    group_key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """사용자가 그룹을 탈퇴합니다."""
     member = db.query(GroupMember).filter(
         GroupMember.group_key == group_key,
-        GroupMember.user_id == request.user_id
+        GroupMember.user_id == current_user.id
     ).first()
 
     if not member:
@@ -225,12 +252,93 @@ def leave_group(group_key: str, request: GroupLeaveRequest, db: Session = Depend
     db.delete(member)
 
     # 대표 그룹 키 삭제 처리 (동일한 경우)
-    user = db.query(User).filter(User.id == request.user_id).first()
-    if user and user.group_key == group_key:
+    if current_user.group_key == group_key:
         # 다른 속한 그룹이 있다면 첫 번째 그룹으로 변경, 없으면 None
-        remaining = db.query(GroupMember).filter(GroupMember.user_id == request.user_id).first()
-        user.group_key = remaining.group_key if remaining else None
+        remaining = db.query(GroupMember).filter(GroupMember.user_id == current_user.id).first()
+        current_user.group_key = remaining.group_key if remaining else None
 
     db.commit()
 
     return {"message": "그룹에서 탈퇴했습니다."}
+
+
+@router.get("/groups/{group_key}/stats", response_model=GroupStatsResponse)
+def get_group_stats(
+    group_key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """로그인한 사용자의 그룹 내 개인 전적/상대 전적/월별 추이를 조회합니다."""
+    assert_group_member(db, group_key, current_user.id)
+
+    games = db.query(Game).filter(Game.group_key == group_key, Game.is_deleted == False).all()
+    game_ids = [g.game_id for g in games]
+
+    participants = []
+    if game_ids:
+        participants = db.query(GameParticipant).filter(GameParticipant.game_id.in_(game_ids)).all()
+
+    participants_by_game: dict[str, list[GameParticipant]] = {}
+    for p in participants:
+        participants_by_game.setdefault(p.game_id, []).append(p)
+
+    wins = losses = draws = 0
+    head_to_head: dict[str, dict[str, int]] = {}
+    monthly: dict[str, dict[str, int]] = {}
+
+    for game in games:
+        game_participants = participants_by_game.get(game.game_id, [])
+        me = next((p for p in game_participants if p.user_id == current_user.id), None)
+        if not me:
+            continue
+
+        month_key = game.played_at.strftime("%Y-%m")
+        month_bucket = monthly.setdefault(month_key, {"games": 0, "wins": 0})
+        month_bucket["games"] += 1
+
+        if me.is_winner is True:
+            wins += 1
+            month_bucket["wins"] += 1
+        elif me.is_winner is False:
+            losses += 1
+        else:
+            draws += 1
+
+        opponents = [p for p in game_participants if p.team_color != me.team_color]
+        for opp in opponents:
+            record = head_to_head.setdefault(opp.user_id, {"wins": 0, "losses": 0})
+            if me.is_winner is True:
+                record["wins"] += 1
+            elif me.is_winner is False:
+                record["losses"] += 1
+
+    total_decided = wins + losses
+    win_rate = round(wins / total_decided * 100, 1) if total_decided > 0 else 0.0
+
+    opponent_ids = list(head_to_head.keys())
+    opponent_users: dict[str, User] = {}
+    if opponent_ids:
+        for u in db.query(User).filter(User.id.in_(opponent_ids)).all():
+            opponent_users[u.id] = u
+
+    head_to_head_list = []
+    for opponent_id, record in head_to_head.items():
+        opponent = opponent_users.get(opponent_id)
+        head_to_head_list.append(HeadToHeadResponse(
+            opponent_id=opponent_id,
+            opponent_name=(opponent.name or opponent.login_id) if opponent else opponent_id,
+            wins=record["wins"],
+            losses=record["losses"]
+        ))
+    head_to_head_list.sort(key=lambda h: h.wins + h.losses, reverse=True)
+
+    monthly_trend = [
+        MonthlyTrendResponse(month=month, games=bucket["games"], wins=bucket["wins"])
+        for month, bucket in sorted(monthly.items())
+    ][-6:]
+
+    return GroupStatsResponse(
+        my_record=MyRecordResponse(wins=wins, losses=losses, draws=draws, win_rate=win_rate),
+        head_to_head=head_to_head_list,
+        monthly_trend=monthly_trend
+    )

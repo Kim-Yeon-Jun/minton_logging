@@ -14,6 +14,10 @@ class Settings:
     DATABASE_PORT: int = int(os.getenv("DATABASE_PORT", "5432"))
     DATABASE_SCHEMA: str = os.getenv("DATABASE_SCHEMA", "BD_MAIN")
 
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "dev-only-insecure-secret-change-me")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", str(60 * 24 * 7)))  # 7일
+
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         return f"postgresql://{self.DATABASE_USER}:{self.DATABASE_PASSWORD}@{self.DATABASE_URL}:{self.DATABASE_PORT}/{self.DATABASE_NAME}"

@@ -1,1 +1,1 @@
-export { default as WelcomeScreen } from './components/WelcomeScreen';
+export { default as HomeScreen } from './components/HomeScreen';

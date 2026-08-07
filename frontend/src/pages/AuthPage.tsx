@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { LoginForm, RegisterForm, User } from '../features/auth';
-import { WelcomeScreen } from '../features/dashboard';
+import { useEffect, useState } from 'react';
+import { getMeApi, LoginForm, LoginResponse, RegisterForm, User } from '../features/auth';
+import { clearToken, getToken, setToken } from '../lib/apiClient';
+import HomePage from './HomePage';
 
 type AuthMode = 'login' | 'register';
 
@@ -8,9 +9,23 @@ export default function AuthPage() {
   const [user, setUser] = useState<User | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [successMsg, setSuccessMsg] = useState<string>('');
+  const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
 
-  const handleLoginSuccess = (userData: User) => {
-    setUser(userData);
+  useEffect(() => {
+    if (!getToken()) {
+      setIsRestoringSession(false);
+      return;
+    }
+
+    getMeApi()
+      .then((me) => setUser(me))
+      .catch(() => clearToken())
+      .finally(() => setIsRestoringSession(false));
+  }, []);
+
+  const handleLoginSuccess = (result: LoginResponse) => {
+    setToken(result.access_token);
+    setUser(result);
     setSuccessMsg('');
   };
 
@@ -20,9 +35,18 @@ export default function AuthPage() {
   };
 
   const handleLogout = () => {
+    clearToken();
     setUser(null);
     setSuccessMsg('');
   };
+
+  if (isRestoringSession) {
+    return (
+      <div className="app-container">
+        <p className="subtitle">불러오는 중...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -51,7 +75,7 @@ export default function AuthPage() {
           />
         )
       ) : (
-        <WelcomeScreen user={user} onLogout={handleLogout} />
+        <HomePage user={user} onLogout={handleLogout} />
       )}
     </div>
   );

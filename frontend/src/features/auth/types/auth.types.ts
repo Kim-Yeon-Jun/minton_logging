@@ -1,6 +1,8 @@
 export interface User {
+  id: string;
   username: string;
   name?: string | null;
+  group_key?: string | null;
 }
 
 export interface LoginRequest {
@@ -10,8 +12,12 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   message: string;
+  access_token: string;
+  token_type: string;
+  id: string;
   username: string;
   name?: string | null;
+  group_key?: string | null;
 }
 
 export interface RegisterRequest {
@@ -22,6 +28,8 @@ export interface RegisterRequest {
 
 export interface RegisterResponse {
   message: string;
+  id: string;
   username: string;
   name?: string | null;
+  group_key?: string | null;
 }

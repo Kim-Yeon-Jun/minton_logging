@@ -1,9 +1,9 @@
 import React from 'react';
 import { useLogin } from '../hooks/useLogin';
-import { User } from '../types/auth.types';
+import { LoginResponse } from '../types/auth.types';
 
 export interface LoginFormProps {
-  onLoginSuccess: (user: User) => void;
+  onLoginSuccess: (result: LoginResponse) => void;
   onSwitchToRegister: () => void;
 }
 
