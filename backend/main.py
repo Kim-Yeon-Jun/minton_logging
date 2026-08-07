@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import engine, Base
 from api.auth import router as auth_router
+from api.groups import router as groups_router
 
 # 스키마 및 데이터베이스 테이블 자동 생성
 try:
@@ -24,6 +25,8 @@ app.add_middleware(
 
 # API 라우터 등록
 app.include_router(auth_router, prefix="/api", tags=["Auth"])
+app.include_router(groups_router, prefix="/api", tags=["Groups"])
+
 
 @app.get("/")
 def read_root():
