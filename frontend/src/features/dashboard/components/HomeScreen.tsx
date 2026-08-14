@@ -13,7 +13,7 @@ export default function HomeScreen({ user, onSelectGroup }: HomeScreenProps) {
     <div className="home-screen">
       <div className="user-avatar">👤</div>
       <h1 className="title">
-        {user.name ? `${user.name}(${user.username})` : user.username}님, 환영합니다! 🎉
+        {user.name ? `${user.name}` : user.username}님, 환영합니다! 🎉
       </h1>
       <p className="subtitle">참여 중인 그룹을 선택해서 경기 이력을 확인해 보세요.</p>
 
