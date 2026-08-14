@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getGroupStatsApi } from '../services/statsApi';
 import { GroupStats } from '../types/stats.types';
 
-export function useGroupStats(groupKey: string) {
+export function useGroupStats(groupKey: string, yearMonth?: string | null) {
   const [stats, setStats] = useState<GroupStats | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -12,7 +12,7 @@ export function useGroupStats(groupKey: string) {
     setIsLoading(true);
     setErrorMsg('');
 
-    getGroupStatsApi(groupKey)
+    getGroupStatsApi(groupKey, yearMonth)
       .then((data) => {
         if (!cancelled) setStats(data);
       })
@@ -28,7 +28,7 @@ export function useGroupStats(groupKey: string) {
     return () => {
       cancelled = true;
     };
-  }, [groupKey]);
+  }, [groupKey, yearMonth]);
 
   return { stats, isLoading, errorMsg };
 }

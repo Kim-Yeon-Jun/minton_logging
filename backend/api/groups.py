@@ -1,5 +1,6 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
@@ -60,10 +61,21 @@ class MonthlyTrendResponse(BaseModel):
     games: int
     wins: int
 
+class MonthlyLeaderResponse(BaseModel):
+    user_id: str
+    name: str
+    wins: int
+    losses: int
+    draws: int
+    win_rate: float
+    score_diff: int
+
 class GroupStatsResponse(BaseModel):
     my_record: MyRecordResponse
     head_to_head: list[HeadToHeadResponse]
     monthly_trend: list[MonthlyTrendResponse]
+    monthly_best: MonthlyLeaderResponse | None = None
+    monthly_worst: MonthlyLeaderResponse | None = None
 
 
 # --- API Endpoints ---
@@ -262,9 +274,81 @@ def leave_group(
     return {"message": "그룹에서 탈퇴했습니다."}
 
 
+def _compute_monthly_leaders(
+    db: Session, group_key: str, year_month: str
+) -> tuple["MonthlyLeaderResponse | None", "MonthlyLeaderResponse | None"]:
+    """해당 년월(year_month)의 그룹원별 승률/득실차를 계산해 베스트·워스트를 반환합니다."""
+    year, month = (int(part) for part in year_month.split("-"))
+    month_start = datetime(year, month, 1)
+    month_end = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+
+    month_games = db.query(Game).filter(
+        Game.group_key == group_key,
+        Game.is_deleted == False,
+        Game.played_at >= month_start,
+        Game.played_at < month_end
+    ).all()
+    month_game_ids = [g.game_id for g in month_games]
+
+    month_participants = []
+    if month_game_ids:
+        month_participants = db.query(GameParticipant).filter(
+            GameParticipant.game_id.in_(month_game_ids)
+        ).all()
+
+    participants_by_game: dict[str, list[GameParticipant]] = {}
+    for p in month_participants:
+        participants_by_game.setdefault(p.game_id, []).append(p)
+
+    member_stats: dict[str, dict[str, int]] = {}
+
+    for game in month_games:
+        game_participants = participants_by_game.get(game.game_id, [])
+        for p in game_participants:
+            stat = member_stats.setdefault(p.user_id, {"wins": 0, "losses": 0, "draws": 0, "score_diff": 0})
+            opponents = [o for o in game_participants if o.team_color != p.team_color]
+            opp_score = opponents[0].score if opponents else 0
+            stat["score_diff"] += p.score - opp_score
+
+            if p.is_winner is True:
+                stat["wins"] += 1
+            elif p.is_winner is False:
+                stat["losses"] += 1
+            else:
+                stat["draws"] += 1
+
+    if not member_stats:
+        return None, None
+
+    user_ids = list(member_stats.keys())
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()}
+
+    ranked = []
+    for user_id, stat in member_stats.items():
+        total_decided = stat["wins"] + stat["losses"]
+        win_rate = round(stat["wins"] / total_decided * 100, 1) if total_decided > 0 else 0.0
+        user = users.get(user_id)
+        ranked.append(MonthlyLeaderResponse(
+            user_id=user_id,
+            name=(user.name or user.login_id) if user else user_id,
+            wins=stat["wins"],
+            losses=stat["losses"],
+            draws=stat["draws"],
+            win_rate=win_rate,
+            score_diff=stat["score_diff"]
+        ))
+
+    ranked_best = sorted(ranked, key=lambda r: (r.win_rate, r.score_diff), reverse=True)
+    best = ranked_best[0]
+    worst = sorted(ranked, key=lambda r: (r.win_rate, r.score_diff))[0] if len(ranked) > 1 else None
+
+    return best, worst
+
+
 @router.get("/groups/{group_key}/stats", response_model=GroupStatsResponse)
 def get_group_stats(
     group_key: str,
+    year_month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM. 지정 시 해당 월의 베스트/워스트 전적을 함께 반환합니다."),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -337,8 +421,14 @@ def get_group_stats(
         for month, bucket in sorted(monthly.items())
     ][-6:]
 
+    monthly_best = monthly_worst = None
+    if year_month:
+        monthly_best, monthly_worst = _compute_monthly_leaders(db, group_key, year_month)
+
     return GroupStatsResponse(
         my_record=MyRecordResponse(wins=wins, losses=losses, draws=draws, win_rate=win_rate),
         head_to_head=head_to_head_list,
-        monthly_trend=monthly_trend
+        monthly_trend=monthly_trend,
+        monthly_best=monthly_best,
+        monthly_worst=monthly_worst
     )

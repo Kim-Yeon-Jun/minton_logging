@@ -11,6 +11,7 @@ import {
 } from '../features/games';
 import { Group } from '../features/groups';
 import { GroupStats } from '../features/stats';
+import { currentYearMonth } from '../utils/date';
 
 export interface GroupPageProps {
   group: Group;
@@ -18,10 +19,6 @@ export interface GroupPageProps {
 }
 
 type GroupView = 'list' | 'create' | 'edit' | 'trash' | 'stats';
-
-function currentYearMonth(): string {
-  return new Date().toISOString().slice(0, 7);
-}
 
 export default function GroupPage({ group, currentUserId }: GroupPageProps) {
   const [filters, setFilters] = useState<GameFilterState>({

@@ -1,6 +1,5 @@
-import { Dropdown } from '../../../components';
+import { Dropdown, MonthPicker } from '../../../components';
 import { GameFilterState, GameSortOrder } from '../types/game.types';
-import MonthPicker from './MonthPicker';
 
 const SORT_OPTIONS: { value: GameSortOrder; label: string }[] = [
   { value: 'desc', label: '최신순' },
