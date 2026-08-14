@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createGameApi, updateGameApi } from '../services/gamesApi';
 import { CreateGameRequest, Game, GameParticipantInput } from '../types/game.types';
+import { isoToDatetimeLocalValue, nowAsDatetimeLocalValue } from '../utils/datetimeLocal';
 
 export type Team = 'A' | 'B';
 export type TeamAssignment = Team | '';
@@ -35,6 +36,10 @@ export function useGameForm(groupKey: string, existingGame: Game | undefined, on
   const [gameType, setGameTypeState] = useState<string>(existingGame?.game_type ?? 'doubles');
   const [courtNumber, setCourtNumber] = useState<string>(
     existingGame?.court_number ? String(existingGame.court_number) : ''
+  );
+  const [videoUrl, setVideoUrl] = useState<string>(existingGame?.video_url ?? '');
+  const [playedAt, setPlayedAt] = useState<string>(
+    existingGame ? isoToDatetimeLocalValue(existingGame.played_at) : nowAsDatetimeLocalValue()
   );
   const [teamASlots, setTeamASlots] = useState<string[]>(slotsFromGame(existingGame, 'A'));
   const [teamBSlots, setTeamBSlots] = useState<string[]>(slotsFromGame(existingGame, 'B'));
@@ -81,6 +86,11 @@ export function useGameForm(groupKey: string, existingGame: Game | undefined, on
       return;
     }
 
+    if (!playedAt) {
+      setErrorMsg('경기 일시를 입력해 주세요.');
+      return;
+    }
+
     const participants: GameParticipantInput[] = [
       ...teamAIds.map((user_id) => ({ user_id, team_color: 'A', score: Number(teamAScore) || 0 })),
       ...teamBIds.map((user_id) => ({ user_id, team_color: 'B', score: Number(teamBScore) || 0 })),
@@ -93,6 +103,8 @@ export function useGameForm(groupKey: string, existingGame: Game | undefined, on
         await updateGameApi(existingGame.game_id, {
           game_type: gameType,
           court_number: courtNumber ? Number(courtNumber) : null,
+          video_url: videoUrl.trim() || null,
+          played_at: playedAt,
           participants,
         });
       } else {
@@ -100,6 +112,8 @@ export function useGameForm(groupKey: string, existingGame: Game | undefined, on
           group_key: groupKey,
           game_type: gameType,
           court_number: courtNumber ? Number(courtNumber) : null,
+          video_url: videoUrl.trim() || null,
+          played_at: playedAt,
           participants,
         };
         await createGameApi(request);
@@ -109,6 +123,8 @@ export function useGameForm(groupKey: string, existingGame: Game | undefined, on
         setTeamAScore('');
         setTeamBScore('');
         setCourtNumber('');
+        setVideoUrl('');
+        setPlayedAt(nowAsDatetimeLocalValue());
       }
 
       onSaved();
@@ -129,6 +145,10 @@ export function useGameForm(groupKey: string, existingGame: Game | undefined, on
     slotsPerTeam,
     courtNumber,
     setCourtNumber,
+    videoUrl,
+    setVideoUrl,
+    playedAt,
+    setPlayedAt,
     teamASlots,
     teamBSlots,
     setSlot,

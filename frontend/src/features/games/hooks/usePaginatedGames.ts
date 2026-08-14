@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Game, GameListResponse } from '../types/game.types';
+import { Game, GameListFilters, GameListResponse } from '../types/game.types';
 
 const PAGE_SIZE = 10;
 
-type Fetcher = (groupKey: string, limit: number, offset: number) => Promise<GameListResponse>;
+type Fetcher = (groupKey: string, limit: number, offset: number, filters?: GameListFilters) => Promise<GameListResponse>;
 
-export function usePaginatedGames(fetcher: Fetcher, groupKey: string, errorFallback: string) {
+export function usePaginatedGames(
+  fetcher: Fetcher,
+  groupKey: string,
+  errorFallback: string,
+  filters: GameListFilters = {}
+) {
+  const { yearMonth, sort, myGamesOnly } = filters;
+
   const [games, setGames] = useState<Game[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -16,7 +23,7 @@ export function usePaginatedGames(fetcher: Fetcher, groupKey: string, errorFallb
     setIsLoading(true);
     setErrorMsg('');
 
-    fetcher(groupKey, PAGE_SIZE, 0)
+    fetcher(groupKey, PAGE_SIZE, 0, { yearMonth, sort, myGamesOnly })
       .then((data) => {
         setGames(data.items);
         setTotal(data.total);
@@ -25,7 +32,7 @@ export function usePaginatedGames(fetcher: Fetcher, groupKey: string, errorFallb
         setErrorMsg(err instanceof Error ? err.message : errorFallback);
       })
       .finally(() => setIsLoading(false));
-  }, [fetcher, groupKey, errorFallback]);
+  }, [fetcher, groupKey, errorFallback, yearMonth, sort, myGamesOnly]);
 
   useEffect(() => {
     fetchFirstPage();
@@ -34,7 +41,7 @@ export function usePaginatedGames(fetcher: Fetcher, groupKey: string, errorFallb
   const loadMore = async () => {
     setIsLoadingMore(true);
     try {
-      const data = await fetcher(groupKey, PAGE_SIZE, games.length);
+      const data = await fetcher(groupKey, PAGE_SIZE, games.length, { yearMonth, sort, myGamesOnly });
       setGames((prev) => [...prev, ...data.items]);
       setTotal(data.total);
     } catch (err: unknown) {
@@ -43,6 +50,10 @@ export function usePaginatedGames(fetcher: Fetcher, groupKey: string, errorFallb
       setIsLoadingMore(false);
     }
   };
+
+  const updateGame = useCallback((gameId: string, patch: Partial<Game>) => {
+    setGames((prev) => prev.map((g) => (g.game_id === gameId ? { ...g, ...patch } : g)));
+  }, []);
 
   return {
     games,
@@ -53,5 +64,6 @@ export function usePaginatedGames(fetcher: Fetcher, groupKey: string, errorFallb
     errorMsg,
     refetch: fetchFirstPage,
     loadMore,
+    updateGame,
   };
 }

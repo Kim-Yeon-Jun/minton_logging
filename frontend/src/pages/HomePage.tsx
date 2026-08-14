@@ -32,7 +32,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
       <TopBar activeView={view} onNavigate={handleNavigate} onLogout={onLogout} />
       {view === 'home' && <HomeScreen user={user} onSelectGroup={handleSelectGroup} />}
       {view === 'mypage' && <MyPage user={user} />}
-      {view === 'group' && selectedGroup && <GroupPage group={selectedGroup} />}
+      {view === 'group' && selectedGroup && <GroupPage group={selectedGroup} currentUserId={user.id} />}
     </div>
   );
 }

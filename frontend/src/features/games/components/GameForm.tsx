@@ -17,6 +17,10 @@ export default function GameForm({ groupKey, existingGame, onSaved }: GameFormPr
     slotsPerTeam,
     courtNumber,
     setCourtNumber,
+    videoUrl,
+    setVideoUrl,
+    playedAt,
+    setPlayedAt,
     teamASlots,
     teamBSlots,
     setSlot,
@@ -80,6 +84,20 @@ export default function GameForm({ groupKey, existingGame, onSaved }: GameFormPr
       ) : (
         <form onSubmit={handleSubmit}>
           <div className="form-group">
+            <label htmlFor="played-at">경기 일시</label>
+            <div className="input-wrapper">
+              <input
+                id="played-at"
+                type="datetime-local"
+                value={playedAt}
+                onChange={(e) => setPlayedAt(e.target.value)}
+                disabled={isLoading}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
             <label htmlFor="game-type">경기 종류</label>
             <div className="input-wrapper">
               <select
@@ -104,6 +122,20 @@ export default function GameForm({ groupKey, existingGame, onSaved }: GameFormPr
                 placeholder="코트 번호"
                 value={courtNumber}
                 onChange={(e) => setCourtNumber(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="video-url">경기 영상 링크 (선택)</label>
+            <div className="input-wrapper">
+              <input
+                id="video-url"
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
                 disabled={isLoading}
               />
             </div>

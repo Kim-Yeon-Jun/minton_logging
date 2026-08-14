@@ -2,8 +2,10 @@ import { useState } from 'react';
 import {
   DeletedGameList,
   Game,
+  GameFilterState,
   GameForm,
   GameHistoryList,
+  GameListFilters,
   useGroupGames,
   useTrashedGames,
 } from '../features/games';
@@ -12,15 +14,37 @@ import { GroupStats } from '../features/stats';
 
 export interface GroupPageProps {
   group: Group;
+  currentUserId: string;
 }
 
 type GroupView = 'list' | 'create' | 'edit' | 'trash' | 'stats';
 
-export default function GroupPage({ group }: GroupPageProps) {
-  const activeGames = useGroupGames(group.group_key);
+function currentYearMonth(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+export default function GroupPage({ group, currentUserId }: GroupPageProps) {
+  const [filters, setFilters] = useState<GameFilterState>({
+    mode: 'all',
+    yearMonth: currentYearMonth(),
+    sort: 'desc',
+    myGamesOnly: false,
+  });
+
+  const apiFilters: GameListFilters = {
+    yearMonth: filters.mode === 'month' ? filters.yearMonth : null,
+    sort: filters.sort,
+    myGamesOnly: filters.myGamesOnly,
+  };
+
+  const activeGames = useGroupGames(group.group_key, apiFilters);
   const trashedGames = useTrashedGames(group.group_key);
   const [view, setView] = useState<GroupView>('list');
   const [editingGame, setEditingGame] = useState<Game | null>(null);
+
+  const handleFiltersChange = (patch: Partial<GameFilterState>) => {
+    setFilters((prev) => ({ ...prev, ...patch }));
+  };
 
   const handleSaved = () => {
     activeGames.refetch();
@@ -99,9 +123,13 @@ export default function GroupPage({ group }: GroupPageProps) {
           isLoading={activeGames.isLoading}
           isLoadingMore={activeGames.isLoadingMore}
           errorMsg={activeGames.errorMsg}
+          currentUserId={currentUserId}
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
           onLoadMore={activeGames.loadMore}
           onDeleted={handleTrashChanged}
           onEdit={handleEdit}
+          updateGame={activeGames.updateGame}
         />
       )}
 

@@ -20,8 +20,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
       <div className="group-card-name">{group.group_name}</div>
       {group.description && <div className="group-card-desc">{group.description}</div>}
       <div className="group-card-code" onClick={(e) => e.stopPropagation()}>
-        <span className="group-card-code-value">{group.group_key}</span>
-        <CopyButton value={group.group_key} label="그룹 코드 복사하기" />
+        <CopyButton value={group.group_key} label="그룹 코드 복사" variant="text" />
       </div>
       <div className="group-card-meta">멤버 {group.member_count}명</div>
     </div>
