@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 임시 런처 아이콘. 실제 아이콘은 Android Studio의 Image Asset 도구로 교체할 것. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#1DB954"
+        android:pathData="M54,10 C29.8,10 10,29.8 10,54 C10,78.2 29.8,98 54,98 C78.2,98 98,78.2 98,54 C98,29.8 78.2,10 54,10 Z" />
+</vector>

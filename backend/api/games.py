@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
@@ -22,6 +22,8 @@ ALLOWED_VIDEO_HOSTS = {
     "tv.naver.com", "video.naver.com",
 }
 
+ALLOWED_GAME_STATUSES = {"scheduled", "in_progress", "finished"}
+
 class GameParticipantInput(BaseModel):
     user_id: str
     team_color: str
@@ -30,10 +32,20 @@ class GameParticipantInput(BaseModel):
 class GameCreateRequest(BaseModel):
     group_key: str
     game_type: str = "doubles"
+    # 기존 클라이언트(웹)는 이 필드를 보내지 않으므로 기본값 "finished"로
+    # 과거 동작을 그대로 유지한다. 워치 등에서 실시간 기록을 시작할 때만
+    # "in_progress"로 명시해서 생성한다.
+    game_status: str = "finished"
     court_number: int | None = None
     video_url: str | None = None
     played_at: str | None = None
     participants: list[GameParticipantInput]
+
+class GameStatusUpdateRequest(BaseModel):
+    game_status: str
+
+class TeamScoreUpdateRequest(BaseModel):
+    score: int = Field(ge=0)
 
 class GameUpdateRequest(BaseModel):
     game_type: str = "doubles"
@@ -104,6 +116,15 @@ def _parse_played_at(played_at: str | None) -> datetime:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="경기 일시 형식이 올바르지 않습니다."
         )
+
+
+def _validate_game_status(game_status: str) -> str:
+    if game_status not in ALLOWED_GAME_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"경기 상태는 {sorted(ALLOWED_GAME_STATUSES)} 중 하나여야 합니다."
+        )
+    return game_status
 
 
 def _validate_video_url(video_url: str | None) -> str | None:
@@ -219,6 +240,17 @@ def _compute_winners(team_scores: dict[str, int]) -> tuple[list[str], bool]:
     return winning_teams, is_draw
 
 
+def _recompute_winners(db: Session, game_id: str) -> None:
+    """게임의 현재 참가자 점수를 바탕으로 팀별 승자(is_winner)를 다시 계산해 반영합니다."""
+    participants = db.query(GameParticipant).filter(GameParticipant.game_id == game_id).all()
+    team_scores = {p.team_color: p.score for p in participants}
+    if len(team_scores) < 2:
+        return
+    winning_teams, is_draw = _compute_winners(team_scores)
+    for p in participants:
+        p.is_winner = None if is_draw else (p.team_color in winning_teams)
+
+
 def _get_game_or_404(db: Session, game_id: str) -> Game:
     game = db.query(Game).filter(Game.game_id == game_id).first()
     if not game:
@@ -251,11 +283,13 @@ def create_game(
     winning_teams, is_draw = _compute_winners(team_scores)
     video_url = _validate_video_url(request.video_url)
     played_at = _parse_played_at(request.played_at)
+    game_status = _validate_game_status(request.game_status)
 
     new_game = Game(
         game_id=str(uuid.uuid4()),
         group_key=request.group_key,
         game_type=request.game_type,
+        game_status=game_status,
         court_number=request.court_number,
         video_url=video_url,
         played_at=played_at
@@ -379,6 +413,73 @@ def update_game(
             is_winner=None if is_draw else (p.team_color in winning_teams)
         ))
 
+    db.commit()
+    db.refresh(game)
+
+    return _build_game_response(db, game, current_user.id)
+
+
+@router.patch("/games/{game_id}/status", response_model=GameResponse)
+def update_game_status(
+    game_id: str,
+    request: GameStatusUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """경기 상태만 변경합니다 (그룹 멤버 누구나 가능). 워치 등에서 경기 시작/종료를 표시할 때 사용."""
+    game = _get_game_or_404(db, game_id)
+    assert_group_member(db, game.group_key, current_user.id)
+
+    if game.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="삭제 예정 상태의 경기는 수정할 수 없습니다. 먼저 복구해 주세요."
+        )
+
+    game.game_status = _validate_game_status(request.game_status)
+    db.commit()
+    db.refresh(game)
+
+    return _build_game_response(db, game, current_user.id)
+
+
+@router.patch("/games/{game_id}/teams/{team_color}/score", response_model=GameResponse)
+def update_team_score(
+    game_id: str,
+    team_color: str,
+    request: TeamScoreUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """한 팀의 점수를 갱신합니다 (그룹 멤버 누구나 가능).
+
+    절대값을 받는다 — 워치처럼 통신이 불안정한 클라이언트가 재시도해도
+    중복 반영되지 않도록, 증가분(delta)이 아니라 "지금 점수는 N이다"를
+    보내는 방식으로 설계했다.
+    """
+    game = _get_game_or_404(db, game_id)
+    assert_group_member(db, game.group_key, current_user.id)
+
+    if game.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="삭제 예정 상태의 경기는 수정할 수 없습니다. 먼저 복구해 주세요."
+        )
+
+    team_participants = db.query(GameParticipant).filter(
+        GameParticipant.game_id == game_id,
+        GameParticipant.team_color == team_color
+    ).all()
+    if not team_participants:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="해당 팀을 찾을 수 없습니다."
+        )
+
+    for p in team_participants:
+        p.score = request.score
+
+    _recompute_winners(db, game_id)
     db.commit()
     db.refresh(game)
 

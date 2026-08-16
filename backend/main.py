@@ -6,6 +6,7 @@ from database import engine, Base
 from api.auth import router as auth_router
 from api.groups import router as groups_router
 from api.games import router as games_router
+from api.device import router as device_router
 
 # 스키마 및 데이터베이스 테이블 자동 생성
 try:
@@ -28,6 +29,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api", tags=["Auth"])
 app.include_router(groups_router, prefix="/api", tags=["Groups"])
 app.include_router(games_router, prefix="/api", tags=["Games"])
+app.include_router(device_router, prefix="/api", tags=["Device"])
 
 
 @app.get("/")

@@ -20,6 +20,7 @@ from database import Base  # noqa: E402
 # re-exports User/Group/GroupMember.
 import models  # noqa: E402,F401
 import models.game  # noqa: E402,F401
+import models.device  # noqa: E402,F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
